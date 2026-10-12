@@ -30,6 +30,7 @@ services:
       - "${LOCALSTACK_PORT:-4566}:4566"
     volumes:
       - localstack_data:/var/lib/localstack
+      - ./infra/localstack/init:/etc/localstack/init/ready.d
 
 volumes:
   mysql_data:
