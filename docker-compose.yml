@@ -5,7 +5,7 @@ services:
     container_name: medalhao-mysql
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-ecommerce}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-techflow_oltp}
       MYSQL_USER: ${MYSQL_USER:-etl_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change_me_local}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me_root}
