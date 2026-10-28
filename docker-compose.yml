@@ -32,6 +32,26 @@ services:
       - localstack_data:/var/lib/localstack
       - ./infra/localstack/init:/etc/localstack/init/ready.d
 
+  spark:
+    build:
+      context: .
+      dockerfile: infra/spark/Dockerfile
+    container_name: medalhao-spark
+    restart: unless-stopped
+    environment:
+      SPARK_LOCAL_IP: 0.0.0.0
+      PYTHONPATH: /usr/local/spark/python/lib/pyspark.zip:/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip
+    ports:
+      - "8888:8888"
+      - "4040:4040"
+    volumes:
+      - ./jobs:/home/jovyan/work/jobs
+      - ./landing:/home/jovyan/work/landing
+      - ./analytics:/home/jovyan/work/analytics
+    command: ["start-notebook.py", "--IdentityProvider.token=''"]
+    mem_limit: 2g
+
 volumes:
   mysql_data:
   localstack_data:
+  spark_data:

@@ -10,3 +10,15 @@ landing/*
 !landing/.gitkeep
 .vscode/
 .DS_Store
+
+# Configurações locais e credenciais
+connectionConfiguration.json
+.env.*
+!.env.example
+
+# Arquivos de backup e temporários
+*.bak
+*.tmp
+
+# Saídas de ferramentas
+.ipynb_checkpoints/
