@@ -28,8 +28,9 @@ O pipeline deverá responder às seguintes perguntas:
 - Apache Spark / PySpark
 - Python
 - Parquet, JSONL e CSV
+- Git e GitHub
 
-Tecnologias planejadas para etapas posteriores incluem o mecanismo de consultas SQL, a orquestração e a camada de visualização analítica.
+Tecnologias planejadas para etapas posteriores incluem o mecanismo de consultas SQL, a orquestração completa e a camada de visualização analítica.
 
 ## 4. Arquitetura medalhão
 
@@ -49,7 +50,7 @@ Bucket principal: `techflow-bronze`.
 
 #### MySQL
 
-A ingestão MySQL → Airbyte → LocalStack foi executada manualmente pela interface do Airbyte.
+A ingestão MySQL → Airbyte → LocalStack foi executada pela interface do Airbyte.
 
 | Tabela | Registros reportados |
 |---|---:|
@@ -104,27 +105,161 @@ Os totais representam registros processados nas oito fontes e não pedidos únic
 - `itens_pedido`: rejeição de preços nulos e negativos.
   - 979 registros com preço nulo.
   - 994 registros com preço negativo.
-- `custos_produtos`: rejeição da linha de totalização (`sku = TOTAL`), que não representa um produto individual.
+- `custos_produtos`: rejeição da linha de totalização (`sku = TOTAL`).
 - `pedidos`: 40.000 registros válidos, sem rejeições nas regras implementadas.
 - `produtos`, `clientes` e `enderecos`: registros processados sem rejeições nas regras implementadas.
 - `clickstream`: 300.000 eventos processados sem rejeições nas regras implementadas.
 - `investimento_midia`: 90 registros processados sem rejeições nas regras implementadas.
 
-Os dados válidos e os registros rejeitados foram gravados em Parquet no LocalStack, permitindo continuidade do processamento e auditoria.
+Os dados válidos e os registros rejeitados foram gravados em Parquet no LocalStack.
 
 **Status Silver:** transformações das oito fontes executadas e validadas. As regras implementadas cobrem os tratamentos descritos acima; isso não significa que todas as possíveis regras de qualidade estejam concluídas.
 
 ### 4.3 Gold — modelagem analítica
 
-A camada Gold deverá organizar os dados em um modelo dimensional para responder às seis perguntas de negócio.
+A camada Gold organiza os dados em um modelo dimensional para responder às perguntas de negócio.
 
-A modelagem deverá considerar dimensões e fatos relacionados a produtos, clientes, datas, vendas, eventos de navegação e investimento em mídia.
+#### Dimensões implementadas
 
-As métricas comerciais deverão considerar os status de pedido definidos para vendas efetivas (`pago`, `enviado` e `entregue`). Pedidos cancelados e pendentes deverão permanecer disponíveis para análises apropriadas, mas não deverão compor as métricas de vendas efetivas.
+| Dimensão | Registros | Descrição |
+|---|---:|---|
+| `dim_cliente` | 5.000 | Dados dos clientes e chave substituta |
+| `dim_produto` | 200 | Dados dos produtos, categorias e chave substituta |
+| `dim_tempo` | 91 | Calendário de 14/07/2026 a 12/10/2026 |
 
-**Status Gold:** pendente de implementação.
+#### Fato de vendas
 
-## 5. Organização do projeto
+A tabela `fato_vendas` possui granularidade de item de pedido.
+
+Regras comerciais implementadas:
+
+- Considerar pedidos com status `pago`, `enviado` e `entregue` como receita realizada.
+- Excluir pedidos `cancelado` e `pendente` das métricas de vendas efetivas.
+- Calcular receita bruta, descontos e receita líquida.
+- Não incluir frete na receita dos produtos.
+- Relacionar o custo do produto à data da venda, respeitando sua vigência.
+- Calcular custo e margem somente quando existir exatamente um registro de custo aplicável.
+
+Resultado da execução:
+
+| Indicador | Resultado |
+|---|---:|
+| Itens na fato de vendas | 58.777 |
+| Receita bruta | R$ 471.918.961,56 |
+| Descontos | R$ 17.746.251,30 |
+| Receita líquida | R$ 454.172.710,26 |
+| Itens com custo válido | 17.135 |
+| Itens com custo ambíguo | 11.208 |
+| Itens fora da vigência do custo | 21.693 |
+| Itens sem cadastro de custo | 8.741 |
+
+A cobertura de receita com custo válido é de aproximadamente 29,25%.
+
+**Limitação importante:** existem intervalos de vigência de custos sobrepostos e produtos sem cadastro de custo. Por isso, a margem calculada não representa toda a operação. Os itens sem custo único válido permanecem na fato, mas sem custo e margem calculados. Não são atribuídos custos estimados.
+
+**Status Gold:** dimensões básicas e fato de vendas implementadas e executadas. A implementação completa do modelo dimensional previsto no exercício, incluindo SCD2 funcional, dimensão de canal e demais estruturas analíticas, ainda precisa ser avaliada e concluída.
+
+## 5. Análises de negócio
+
+Cada questão deve apresentar consulta, resultado numérico, gráfico e interpretação.
+
+### 5.1 Q1 — Ticket médio mensal por categoria
+
+**Status:** concluída e executada.
+
+Critérios utilizados:
+
+- Receita líquida dos pedidos realizados.
+- Contagem de pedidos distintos por mês e categoria.
+- Ticket médio calculado pela divisão da receita líquida pela quantidade de pedidos distintos naquela categoria.
+- Comparação de crescimento entre julho e setembro de 2026, ambos meses completos.
+
+Resultado principal:
+
+| Categoria | Crescimento do ticket médio |
+|---|---:|
+| Áudio | +4,26% |
+| Periféricos | +4,13% |
+| Acessórios | +1,79% |
+| Games | +0,77% |
+| Informática | -0,34% |
+| Celulares | -2,54% |
+
+**Interpretação:** a categoria Áudio apresentou o maior crescimento do ticket médio entre julho e setembro de 2026, com alta de 4,26%.
+
+Outubro aparece na série mensal, mas é um período parcial, com dados disponíveis até 12/10/2026. Por isso, não foi utilizado na comparação de crescimento.
+
+Arquivos gerados:
+
+- `analytics/queries/q1_ticket_medio.py`
+- `analytics/results/q1_ticket_medio_mensal.csv`
+- `analytics/results/q1_crescimento_categoria.csv`
+- `analytics/results/q1_ticket_medio_mensal.png`
+
+### 5.2 Q2 — Funil de conversão por dispositivo
+
+**Status:** pendente de implementação.
+
+Deverá analisar as etapas:
+
+`product_view` → `add_to_cart` → `checkout_start` → `purchase`
+
+A análise deverá considerar desktop, mobile e tablet, incluindo quantidade de eventos ou sessões por etapa e taxas de conversão e abandono.
+
+Será necessário definir e validar a regra de associação entre eventos e pedidos para evitar duplicidade na contagem de conversões.
+
+### 5.3 Q3 — Top 10 produtos por receita versus margem
+
+**Status:** consulta e resultados implementados e executados.
+
+A análise compara:
+
+- Os dez produtos com maior receita líquida.
+- Os dez produtos com maior margem bruta calculada.
+- Os produtos presentes nos dois rankings.
+- A cobertura dos custos utilizados no cálculo da margem.
+
+Resultados principais:
+
+- Apenas dois produtos aparecem simultaneamente nos dois rankings.
+- O ranking de receita considera todos os itens de vendas realizadas.
+- O ranking de margem considera somente itens com custo válido e único.
+- A cobertura de receita com custo válido é de aproximadamente 29,25%.
+
+**Interpretação:** os produtos que mais geram receita não são necessariamente os que mais geram margem. A análise de margem é parcial devido às limitações identificadas no cadastro e na vigência dos custos.
+
+Arquivos gerados:
+
+- `analytics/queries/q3_top_produtos.py`
+- `analytics/results/q3_top10_receita.csv`
+- `analytics/results/q3_top10_margem.csv`
+- `analytics/results/q3_comparacao_rankings.csv`
+
+**Pendência:** produzir e validar o gráfico da Q3, conforme o requisito do exercício.
+
+### 5.4 Q4 — Retenção por coorte
+
+**Status:** pendente de implementação.
+
+A análise deverá agrupar clientes pelo mês da primeira compra e calcular os percentuais de clientes que voltaram a comprar em M+1, M+2 e M+3.
+
+### 5.5 Q5 — ROAS por canal de mídia
+
+**Status:** pendente de implementação.
+
+A análise deverá relacionar a receita atribuída ao canal, por meio do `utm_source` do clickstream, com o investimento registrado no CSV de mídia, por canal e semana.
+
+Será necessário padronizar os nomes dos canais e validar as regras de atribuição antes de apresentar os resultados.
+
+### 5.6 Q6 — Auditoria de dados
+
+**Status:** pendente de implementação.
+
+A análise deverá identificar quantos pedidos ou registros relacionados a pedidos foram rejeitados na Silver, os respectivos motivos e a receita potencial associada.
+
+Será necessário consolidar os registros de auditoria e relacioná-los aos dados de origem.
+
+## 6. Organização do projeto
 
 A estrutura principal inclui:
 
@@ -132,9 +267,13 @@ A estrutura principal inclui:
 pipeline-medalhao/
 ├── airbyte/
 ├── analytics/
+│   ├── queries/
+│   ├── results/
+│   └── notebooks/
 ├── data_generator/
 ├── infra/
 ├── jobs/
+│   ├── gold/
 │   └── silver/
 ├── landing/
 ├── logs/
@@ -149,15 +288,15 @@ pipeline-medalhao/
 
 A estrutura real pode conter outros arquivos auxiliares e scripts de validação.
 
-## 6. Execução e validação
+## 7. Execução e validação
 
-### 6.1 Serviços locais
+### 7.1 Serviços locais
 
 O Docker Compose é utilizado para executar o MySQL, o LocalStack e o ambiente Spark.
 
-O Airbyte foi instalado separadamente por meio do `abctl`, e a sincronização inicial MySQL → Bronze foi executada pela interface do Airbyte.
+O Airbyte foi instalado separadamente por meio do `abctl`.
 
-### 6.2 Conferir os objetos da Bronze
+### 7.2 Conferir os objetos da Bronze
 
 No PowerShell:
 
@@ -165,29 +304,53 @@ No PowerShell:
 docker exec medalhao-localstack awslocal s3 ls s3://techflow-bronze/ --recursive
 ```
 
-### 6.3 Conferir os objetos da Silver
-
-Para listar os arquivos da camada Silver:
+### 7.3 Conferir os objetos da Silver
 
 ```powershell
 docker exec medalhao-localstack awslocal s3 ls s3://techflow-silver/ --recursive
 ```
 
-Os diretórios de saída contêm arquivos Parquet e marcadores de conclusão do Spark, conforme validado nas execuções realizadas.
+### 7.4 Conferir os objetos da Gold
 
-### 6.4 Executar os jobs
+```powershell
+docker exec medalhao-localstack awslocal s3 ls s3://techflow-gold/ --recursive
+```
 
-Os scripts de processamento estão organizados em `jobs/` e `jobs/silver/`.
+### 7.5 Executar análises
 
-A execução de cada job depende dos serviços Docker e dos dados de entrada disponíveis no LocalStack. Os comandos operacionais específicos deverão ser mantidos junto aos respectivos scripts ou documentados quando a orquestração for implementada.
+Exemplo de execução da Q1:
 
-## 7. Qualidade e auditoria
+```powershell
+docker exec medalhao-spark python /home/jovyan/work/analytics/queries/q1_ticket_medio.py
+```
 
-A Silver já separa registros válidos e rejeitados para as fontes tratadas. As quantidades e os motivos de rejeição são registrados nos resultados dos jobs e preservados nos caminhos de auditoria.
+Exemplo de execução da Q3:
 
-Ainda será necessário consolidar essas informações em uma solução de observabilidade e em uma estrutura analítica que permita responder integralmente à pergunta de auditoria da camada Gold.
+```powershell
+docker exec medalhao-spark python /home/jovyan/work/analytics/queries/q3_top_produtos.py
+```
 
-## 8. Histórico de desenvolvimento
+Os resultados exportados são gravados em `analytics/results/` no ambiente local, conforme o volume configurado no Docker Compose.
+
+## 8. Qualidade e auditoria
+
+A Silver separa registros válidos e rejeitados para as fontes tratadas.
+
+As quantidades e os motivos de rejeição são registrados nos resultados dos jobs e preservados nos caminhos de auditoria.
+
+Na Gold, foram realizadas validações de integridade referencial e duplicidade:
+
+- Nenhum pedido duplicado na validação realizada.
+- Nenhum SKU duplicado na dimensão de produtos.
+- Nenhum item sem pedido correspondente.
+- Nenhum item sem produto correspondente.
+- Nenhum pedido sem cliente correspondente.
+
+Também foram identificadas limitações na cobertura temporal dos custos, documentadas na seção da Gold e na análise Q3.
+
+Ainda será necessário consolidar essas informações em uma solução de observabilidade e na análise final de auditoria.
+
+## 9. Histórico de desenvolvimento
 
 | Etapa | Status |
 |---|---|
@@ -197,26 +360,35 @@ Ainda será necessário consolidar essas informações em uma solução de obser
 | Instalação e validação inicial do Airbyte | Concluída |
 | Ingestão inicial de MySQL para Bronze | Concluída e validada |
 | Carga de arquivos JSONL e CSV na Bronze | Concluída e validada |
-| Conversão de fontes CSV e clickstream para Parquet na Bronze | Concluída e validada |
+| Conversão de clickstream e CSV para Parquet na Bronze | Concluída e validada |
 | Processamento Silver das oito fontes | Concluído e validado |
 | Separação de registros rejeitados para auditoria | Implementada nas regras descritas |
-| Modelagem dimensional Gold | Pendente |
-| Respostas analíticas às seis perguntas de negócio | Pendente |
+| Dimensões básicas da Gold | Implementadas |
+| Fato de vendas Gold | Implementada e validada |
+| Q1 — Ticket médio por categoria | Concluída e versionada |
+| Q2 — Funil de conversão | Pendente |
+| Q3 — Top 10 por receita e margem | Consulta e CSVs implementados; gráfico pendente |
+| Q4 — Retenção por coorte | Pendente |
+| Q5 — ROAS por canal | Pendente |
+| Q6 — Auditoria de dados | Pendente |
 | Orquestração reproduzível de todas as ingestões e jobs | Pendente |
-| Disponibilização de consultas SQL e visualização analítica | Pendente |
-| Testes integrados e documentação final | Pendente |
+| Consultas SQL e visualização analítica completa | Pendente |
+| Testes integrados e documentação final | Em andamento |
 
-## 9. Próximas etapas
+## 10. Próximas etapas
 
-1. Revisar e versionar os scripts e a documentação da Bronze e da Silver.
-2. Implementar a modelagem dimensional Gold.
-3. Desenvolver e validar as métricas para as seis perguntas de negócio.
-4. Consolidar a auditoria e os indicadores de qualidade.
-5. Automatizar a execução e as dependências do pipeline.
-6. Implementar a camada de consulta SQL e a visualização analítica.
-7. Validar a reprodução do ambiente e documentar a entrega final.
+1. Atualizar e versionar esta documentação.
+2. Desenvolver e validar a Q2 — Funil de conversão por dispositivo.
+3. Produzir o gráfico da Q3.
+4. Implementar a Q4 — Retenção por coorte.
+5. Implementar a Q5 — ROAS por canal de mídia.
+6. Implementar a Q6 — Auditoria de dados.
+7. Revisar o modelo dimensional, incluindo os requisitos de SCD2.
+8. Consolidar as regras de qualidade e observabilidade.
+9. Automatizar a execução e as dependências do pipeline.
+10. Validar a reprodução do ambiente e documentar a entrega final.
 
-## 10. Segurança e versionamento
+## 11. Segurança e versionamento
 
 - Não versionar `.env`, senhas, tokens ou credenciais.
 - Não versionar arquivos locais de configuração que contenham credenciais ou dados sensíveis.
