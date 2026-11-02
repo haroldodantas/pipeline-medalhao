@@ -1,0 +1,4 @@
+﻿dispositivo;sessoes;visualizacoes;carrinhos;checkouts;compras;taxa_visualizacao_carrinho_pct;taxa_carrinho_checkout_pct;taxa_checkout_compra_pct;conversao_total_pct
+desktop;19666;19666;12998;9673;8045;66.09;74.42;83.17;40.91
+mobile;19842;19842;13116;9729;8049;66.1;74.18;82.73;40.57
+tablet;19513;19513;12907;9619;7927;66.15;74.53;82.41;40.62

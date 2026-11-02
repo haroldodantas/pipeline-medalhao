@@ -1,8 +1,9 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, lit, when, current_timestamp, to_timestamp
+    col, lit, when, current_timestamp, row_number
 )
+from pyspark.sql.window import Window
 
 BRONZE = "s3a://techflow-bronze/parquet/clickstream/"
 SILVER_VALIDOS = "s3a://techflow-silver/clickstream/"
@@ -42,12 +43,14 @@ def main():
             col("context.page.url").cast("string").alias("page_url"),
             col("context.page.referrer").cast("string").alias("page_referrer"),
             col("properties.sku").cast("string").alias("sku"),
+            col("properties.pedido_id").cast("long").alias("pedido_id"),
             col("properties.quantity").cast("int").alias("quantity"),
             col("properties.unit_price").cast("decimal(18,2)").alias("unit_price"),
             col("properties.price").cast("decimal(18,2)").alias("price"),
             col("ab_test_variant").cast("string").alias("ab_test_variant"),
         )
 
+        # 1. Validações básicas
         df = df.withColumn(
             "motivo_rejeicao",
             when(
@@ -69,28 +72,68 @@ def main():
             .otherwise(lit(None).cast("string"))
         ).withColumn("processado_em", current_timestamp())
 
-        validos = df.filter(
+        validos_base = df.filter(
             col("motivo_rejeicao").isNull()
         ).drop("motivo_rejeicao")
 
-        rejeitados = df.filter(
+        rejeitados_invalidos = df.filter(
             col("motivo_rejeicao").isNotNull()
         )
 
-        print(f"Total de eventos lidos: {df.count()}")
-        print(f"Eventos válidos: {validos.count()}")
-        print(f"Eventos rejeitados: {rejeitados.count()}")
+        # 2. Identifica IDs duplicados entre os eventos válidos.
+        janela = Window.partitionBy("event_id").orderBy(
+            col("event_timestamp"),
+            col("session_id")
+        )
+
+        eventos_classificados = validos_base.withColumn(
+            "ordem_evento",
+            row_number().over(janela)
+        )
+
+        # Mantém somente a primeira ocorrência de cada event_id.
+        validos = eventos_classificados.filter(
+            col("ordem_evento") == 1
+        ).drop("ordem_evento")
+
+        # Envia as demais ocorrências para a auditoria.
+        rejeitados_duplicados = (
+            eventos_classificados
+            .filter(col("ordem_evento") > 1)
+            .drop("ordem_evento")
+            .withColumn(
+                "motivo_rejeicao",
+                lit("event_id_duplicado")
+            )
+        )
+
+        # 3. Consolida os registros rejeitados.
+        rejeitados = rejeitados_invalidos.unionByName(
+            rejeitados_duplicados
+        )
+
+        # 4. Exibe os resultados.
+        print(f"Total de eventos lidos: {df.count():,}")
+        print(f"Eventos válidos e únicos: {validos.count():,}")
+        print(f"Eventos rejeitados: {rejeitados.count():,}")
 
         print("Rejeitados por motivo:")
         rejeitados.groupBy("motivo_rejeicao").count().orderBy(
             "motivo_rejeicao"
         ).show(truncate=False)
 
-        print("Eventos por tipo:")
+        print("Eventos válidos por tipo:")
         validos.groupBy("event_type").count().orderBy(
             "event_type"
         ).show(truncate=False)
 
+        print("Compras com pedido_id:")
+        validos.filter(
+            (col("event_type") == "purchase") &
+            col("pedido_id").isNotNull()
+        ).select("pedido_id").distinct().count()
+
+        # 5. Grava Silver e auditoria.
         validos.write.mode("overwrite").parquet(SILVER_VALIDOS)
         rejeitados.write.mode("overwrite").parquet(SILVER_REJEITADOS)
 
@@ -103,3 +146,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
