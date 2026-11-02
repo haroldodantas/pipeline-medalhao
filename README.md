@@ -1,4 +1,5 @@
-﻿# Projeto de Engenharia de Dados — Arquitetura Medalhão
+﻿
+# Projeto de Engenharia de Dados — Arquitetura Medalhão
 
 ## 1. Visão geral
 
@@ -93,10 +94,10 @@ Os dados válidos são gravados em Parquet no bucket `techflow-silver`. Os regis
 | `produtos` | 200 | 0 |
 | `clientes` | 5.000 | 0 |
 | `enderecos` | 5.000 | 0 |
-| `clickstream` | 300.000 | 0 |
+| `clickstream` | 291.000 | 9.000 |
 | `custos_produtos` | 500 | 1 |
 | `investimento_midia` | 90 | 0 |
-| **Total** | **448.755** | **1.974** |
+| **Total** | **439.755** | **10.974** |
 
 Os totais representam registros processados nas oito fontes e não pedidos únicos.
 
@@ -108,8 +109,10 @@ Os totais representam registros processados nas oito fontes e não pedidos únic
 - `custos_produtos`: rejeição da linha de totalização (`sku = TOTAL`).
 - `pedidos`: 40.000 registros válidos, sem rejeições nas regras implementadas.
 - `produtos`, `clientes` e `enderecos`: registros processados sem rejeições nas regras implementadas.
-- `clickstream`: 300.000 eventos processados sem rejeições nas regras implementadas.
+- `clickstream`: 291.000 eventos válidos e 9.000 eventos rejeitados por duplicidade de `event_id`.
 - `investimento_midia`: 90 registros processados sem rejeições nas regras implementadas.
+
+No Clickstream, a nova geração produz jornadas associadas a sessões e pedidos reais. A deduplicação é realizada na Silver, utilizando `event_id`, e os eventos duplicados são enviados para auditoria com o motivo `event_id_duplicado`.
 
 Os dados válidos e os registros rejeitados foram gravados em Parquet no LocalStack.
 
@@ -198,15 +201,44 @@ Arquivos gerados:
 
 ### 5.2 Q2 — Funil de conversão por dispositivo
 
-**Status:** pendente de implementação.
+**Status:** consulta, resultados e validação implementados e executados.
 
-Deverá analisar as etapas:
+A análise considera as etapas em sequência cronológica por sessão:
 
 `product_view` → `add_to_cart` → `checkout_start` → `purchase`
 
-A análise deverá considerar desktop, mobile e tablet, incluindo quantidade de eventos ou sessões por etapa e taxas de conversão e abandono.
+Resultados por dispositivo:
 
-Será necessário definir e validar a regra de associação entre eventos e pedidos para evitar duplicidade na contagem de conversões.
+| Indicador | Desktop | Mobile | Tablet |
+|---|---:|---:|---:|
+| Visualizações | 19.666 | 19.842 | 19.513 |
+| Adições ao carrinho | 12.998 | 13.116 | 12.907 |
+| Checkouts | 9.673 | 9.729 | 9.619 |
+| Compras | 8.045 | 8.049 | 7.927 |
+| Conversão visualização → carrinho | 66,09% | 66,10% | 66,15% |
+| Conversão carrinho → checkout | 74,42% | 74,18% | 74,53% |
+| Conversão checkout → compra | 83,17% | 82,73% | 82,41% |
+| Conversão total | 40,91% | 40,57% | 40,62% |
+
+Validação da associação entre eventos de compra e pedidos Silver:
+
+- 24.021 sessões com compra.
+- 24.021 `pedido_id` distintos referenciados.
+- 24.021 pedidos encontrados.
+- 24.021 pedidos com status elegível (`pago`, `enviado` ou `entregue`).
+- Zero pedidos sem correspondência.
+
+**Interpretação:** o desktop apresentou a maior conversão total (40,91%), mas a diferença entre dispositivos é pequena. A maior perda proporcional ocorre entre visualização e adição ao carrinho. A conversão de checkout para compra ficou acima de 82% nos três dispositivos.
+
+Arquivos gerados:
+
+- `analytics/queries/diagnostico_q2.py`
+- `analytics/queries/q2_funil_conversao.py`
+- `analytics/results/q2_funil_por_dispositivo.csv`
+- `analytics/results/q2_validacao_pedidos.csv`
+- `analytics/results/q2_funil_conversao.png`
+
+A geração do Clickstream foi ajustada para produzir jornadas por sessão e associar eventos `purchase` a pedidos reais. O teste `tests/validar_clickstream.py` valida a quantidade de eventos e identificadores repetidos antes do processamento Silver.
 
 ### 5.3 Q3 — Top 10 produtos por receita versus margem
 
@@ -324,6 +356,12 @@ Exemplo de execução da Q1:
 docker exec medalhao-spark python /home/jovyan/work/analytics/queries/q1_ticket_medio.py
 ```
 
+Exemplo de execução da Q2:
+
+```powershell
+docker exec medalhao-spark python /home/jovyan/work/analytics/queries/q2_funil_conversao.py
+```
+
 Exemplo de execução da Q3:
 
 ```powershell
@@ -366,7 +404,7 @@ Ainda será necessário consolidar essas informações em uma solução de obser
 | Dimensões básicas da Gold | Implementadas |
 | Fato de vendas Gold | Implementada e validada |
 | Q1 — Ticket médio por categoria | Concluída e versionada |
-| Q2 — Funil de conversão | Pendente |
+| Q2 — Funil de conversão | Concluída e versionada |
 | Q3 — Top 10 por receita e margem | Consulta e CSVs implementados; gráfico pendente |
 | Q4 — Retenção por coorte | Pendente |
 | Q5 — ROAS por canal | Pendente |
@@ -377,16 +415,14 @@ Ainda será necessário consolidar essas informações em uma solução de obser
 
 ## 10. Próximas etapas
 
-1. Atualizar e versionar esta documentação.
-2. Desenvolver e validar a Q2 — Funil de conversão por dispositivo.
-3. Produzir o gráfico da Q3.
-4. Implementar a Q4 — Retenção por coorte.
-5. Implementar a Q5 — ROAS por canal de mídia.
-6. Implementar a Q6 — Auditoria de dados.
-7. Revisar o modelo dimensional, incluindo os requisitos de SCD2.
-8. Consolidar as regras de qualidade e observabilidade.
-9. Automatizar a execução e as dependências do pipeline.
-10. Validar a reprodução do ambiente e documentar a entrega final.
+1. Produzir e validar o gráfico da Q3.
+2. Implementar a Q4 — Retenção por coorte.
+3. Implementar a Q5 — ROAS por canal de mídia.
+4. Implementar a Q6 — Auditoria de dados.
+5. Revisar o modelo dimensional, incluindo os requisitos de SCD2.
+6. Consolidar as regras de qualidade e observabilidade.
+7. Automatizar a execução e as dependências do pipeline.
+8. Validar a reprodução do ambiente e documentar a entrega final.
 
 ## 11. Segurança e versionamento
 
