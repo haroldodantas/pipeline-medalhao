@@ -277,9 +277,43 @@ Arquivos gerados:
 
 ### 5.4 Q4 — Retenção por coorte
 
-**Status:** pendente de implementação.
+**Status:** consulta, resultados, matriz e gráfico implementados, executados e validados.
 
-A análise deverá agrupar clientes pelo mês da primeira compra e calcular os percentuais de clientes que voltaram a comprar em M+1, M+2 e M+3.
+A análise agrupa os clientes pelo mês da primeira compra observada na base disponível e calcula o percentual de clientes que realizaram compras em cada mês posterior.
+
+**Critérios utilizados:**
+
+- Identificação da primeira compra observada por cliente.
+- Agrupamento por mês de entrada na coorte.
+- Contagem distinta de clientes ativos em cada mês.
+- Retenção calculada em relação ao total de clientes da coorte.
+- Meses futuros sem dados representados como células vazias.
+- Meses observados sem recompra representados como 0%.
+
+**Resultados da retenção:**
+
+| Coorte | Clientes iniciais | Mês 1 | Mês 2 | Mês 3 |
+|---|---:|---:|---:|---:|
+| Julho/2026 | 3.026 | 80,37% | 79,21% | 47,75% |
+| Agosto/2026 | 1.609 | 78,87% | 47,36% | — |
+| Setembro/2026 | 299 | 46,49% | — | — |
+| Outubro/2026 | 24 | — | — | — |
+
+**Interpretação:** a coorte de julho apresentou a maior retenção no primeiro mês, com 80,37%, seguida por agosto, com 78,87%. Setembro apresentou 46,49%. A redução da retenção ao longo dos meses indica oportunidade de desenvolver ações de recompra e relacionamento com clientes.
+
+**Limitações metodológicas:**
+
+- A primeira compra é a primeira observada na janela disponível, não necessariamente a primeira compra histórica do cliente.
+- Os dados terminam em 12/10/2026.
+- Os resultados referentes a outubro representam períodos parciais e devem ser interpretados com cautela.
+- A retenção mensal considera clientes que compraram naquele mês específico, não necessariamente clientes que permaneceram ativos continuamente.
+
+**Arquivos gerados:**
+
+- `analytics/queries/q4_retencao_coorte.py`
+- `analytics/results/q4_retencao_detalhada.csv`
+- `analytics/results/q4_matriz_retencao.csv`
+- `analytics/results/q4_retencao_coorte.png`
 
 ### 5.5 Q5 — ROAS por canal de mídia
 
@@ -374,6 +408,12 @@ Exemplo de execução da Q3:
 docker exec medalhao-spark python /home/jovyan/work/analytics/queries/q3_top_produtos.py
 ```
 
+Exemplo de execução da Q4:
+
+```powershell
+docker exec medalhao-spark python /home/jovyan/work/analytics/queries/q4_retencao_coorte.py
+```
+
 Os resultados exportados são gravados em `analytics/results/` no ambiente local, conforme o volume configurado no Docker Compose.
 
 ## 8. Qualidade e auditoria
@@ -411,8 +451,8 @@ Ainda será necessário consolidar essas informações em uma solução de obser
 | Fato de vendas Gold | Implementada e validada |
 | Q1 — Ticket médio por categoria | Concluída e versionada |
 | Q2 — Funil de conversão | Concluída e versionada |
-| Q3 — Top 10 por receita e margem | Consulta e CSVs implementados; gráfico pendente |
-| Q4 — Retenção por coorte | Pendente |
+| Q3 — Top 10 por receita e margem | Concluída e versionada |
+| Q4 — Retenção por coorte | Concluída e validada; aguardando versionamento |
 | Q5 — ROAS por canal | Pendente |
 | Q6 — Auditoria de dados | Pendente |
 | Orquestração reproduzível de todas as ingestões e jobs | Pendente |
@@ -421,14 +461,12 @@ Ainda será necessário consolidar essas informações em uma solução de obser
 
 ## 10. Próximas etapas
 
-1. Produzir e validar o gráfico da Q3.
-2. Implementar a Q4 — Retenção por coorte.
-3. Implementar a Q5 — ROAS por canal de mídia.
-4. Implementar a Q6 — Auditoria de dados.
-5. Revisar o modelo dimensional, incluindo os requisitos de SCD2.
-6. Consolidar as regras de qualidade e observabilidade.
-7. Automatizar a execução e as dependências do pipeline.
-8. Validar a reprodução do ambiente e documentar a entrega final.
+1. Implementar a Q5 — ROAS por canal de mídia.
+2. Implementar a Q6 — Auditoria de dados.
+3. Revisar o modelo dimensional, incluindo os requisitos de SCD2.
+4. Consolidar as regras de qualidade e observabilidade.
+5. Automatizar a execução e as dependências do pipeline.
+6. Validar a reprodução do ambiente e documentar a entrega final.
 
 ## 11. Segurança e versionamento
 
