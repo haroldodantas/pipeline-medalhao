@@ -177,6 +177,98 @@ print("Exportado: q3_comparacao_rankings.csv - registros:", len(comparacao_linha
 print("\nTodos os CSVs foram salvos em:", RESULTS)
 
 
+# ============================================================
+# 8. GRAFICO COMPARATIVO - RECEITA X MARGEM
+# ============================================================
+
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+
+# Converter os resultados Spark para listas Python
+dados_receita = ranking_receita.collect()
+dados_margem = ranking_margem.collect()
+
+# Preparar rótulos dos produtos
+rotulos_receita = [
+    f"{row['sku']} - {row['nome']}"
+    for row in dados_receita
+]
+
+valores_receita = [
+    float(row["receita_liquida"])
+    for row in dados_receita
+]
+
+rotulos_margem = [
+    f"{row['sku']} - {row['nome']}"
+    for row in dados_margem
+]
+
+valores_margem = [
+    float(row["margem_bruta"])
+    for row in dados_margem
+]
+
+# Formatação monetária brasileira
+def formatar_reais(valor, pos):
+    return f"R$ {valor:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+# Criar dois gráficos lado a lado
+fig, (ax1, ax2) = plt.subplots(
+    1, 2,
+    figsize=(17, 8)
+)
+
+# Gráfico 1 - Receita
+barras1 = ax1.barh(
+    rotulos_receita[::-1],
+    valores_receita[::-1]
+)
+
+ax1.set_title("Top 10 produtos por receita líquida")
+ax1.set_xlabel("Receita líquida")
+ax1.xaxis.set_major_formatter(FuncFormatter(formatar_reais))
+ax1.grid(axis="x", alpha=0.25)
+
+# Gráfico 2 - Margem
+barras2 = ax2.barh(
+    rotulos_margem[::-1],
+    valores_margem[::-1]
+)
+
+ax2.set_title("Top 10 produtos por margem bruta")
+ax2.set_xlabel("Margem bruta")
+ax2.xaxis.set_major_formatter(FuncFormatter(formatar_reais))
+ax2.grid(axis="x", alpha=0.25)
+
+# Ajustar apresentação
+fig.suptitle(
+    "Comparativo: produtos por receita e margem",
+    fontsize=15
+)
+
+fig.text(
+    0.5, 0.015,
+    "Margem calculada somente para itens com custo válido e único.",
+    ha="center",
+    fontsize=9
+)
+
+plt.tight_layout(rect=[0, 0.04, 1, 0.94])
+
+# Salvar gráfico
+arquivo_grafico = RESULTS / "q3_top10_receita_vs_margem.png"
+
+plt.savefig(
+    arquivo_grafico,
+    dpi=150,
+    bbox_inches="tight"
+)
+
+plt.close()
+
+print("\nGráfico exportado:", arquivo_grafico)
+
 
 
 spark.stop()
