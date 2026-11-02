@@ -240,9 +240,10 @@ Arquivos gerados:
 
 A geração do Clickstream foi ajustada para produzir jornadas por sessão e associar eventos `purchase` a pedidos reais. O teste `tests/validar_clickstream.py` valida a quantidade de eventos e identificadores repetidos antes do processamento Silver.
 
+
 ### 5.3 Q3 — Top 10 produtos por receita versus margem
 
-**Status:** consulta e resultados implementados e executados.
+**Status:** consulta, resultados e gráfico implementados e executados.
 
 A análise compara:
 
@@ -253,12 +254,18 @@ A análise compara:
 
 Resultados principais:
 
-- Apenas dois produtos aparecem simultaneamente nos dois rankings.
+- Apenas dois produtos aparecem simultaneamente nos dois rankings:
+  - SKU-0052 — BytePro Produto 52.
+  - SKU-0176 — SmartWave Produto 176.
+- O produto SKU-0073 apresentou a maior receita líquida, com R$ 2.789.487,49.
+- O produto SKU-0038 apresentou a maior margem bruta, com R$ 1.908.422,67.
 - O ranking de receita considera todos os itens de vendas realizadas.
 - O ranking de margem considera somente itens com custo válido e único.
 - A cobertura de receita com custo válido é de aproximadamente 29,25%.
 
-**Interpretação:** os produtos que mais geram receita não são necessariamente os que mais geram margem. A análise de margem é parcial devido às limitações identificadas no cadastro e na vigência dos custos.
+**Interpretação:** os produtos que mais geram receita não são necessariamente os que mais geram margem. O SKU-0073 lidera em receita, mas não aparece entre os dez maiores em margem. Já o SKU-0038 lidera em margem, embora não esteja entre os dez maiores em receita.
+
+A análise de margem é parcial devido às limitações identificadas no cadastro e na vigência dos custos. Portanto, os resultados não representam a rentabilidade de toda a operação.
 
 Arquivos gerados:
 
@@ -266,8 +273,7 @@ Arquivos gerados:
 - `analytics/results/q3_top10_receita.csv`
 - `analytics/results/q3_top10_margem.csv`
 - `analytics/results/q3_comparacao_rankings.csv`
-
-**Pendência:** produzir e validar o gráfico da Q3, conforme o requisito do exercício.
+- `analytics/results/q3_top10_receita_vs_margem.png`
 
 ### 5.4 Q4 — Retenção por coorte
 
